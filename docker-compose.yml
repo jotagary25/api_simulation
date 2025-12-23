@@ -1,0 +1,104 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: whatsapp_api_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-whatsapp_api}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres_password_change_in_production}
+      POSTGRES_INITDB_ARGS: '-A md5'
+    ports:
+      - '${DB_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/database/init:/docker-entrypoint-initdb.d
+    networks:
+      - whatsapp_api_network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-whatsapp_api}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Application - Development
+  whatsapp_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: whatsapp_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: ${PORT:-3000}
+      DB_HOST: postgres
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-whatsapp_api}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres_password_change_in_production}
+    env_file:
+      - .env
+    ports:
+      - '${PORT:-3000}:3000'
+    volumes:
+      # Mount source code for live reload
+      - ./src:/app/src:delegated
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./package.json:/app/package.json:ro
+      # Use named volume for node_modules (prevents conflicts)
+      - node_modules:/app/node_modules
+      # Logs
+      - ./logs:/app/logs
+    networks:
+      - whatsapp_api_network
+    command: npm run dev
+    profiles:
+      - dev
+
+  # Application - Production
+  whatsapp_api_prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: whatsapp_api_prod
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      DB_HOST: postgres
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-whatsapp_api}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres_password_change_in_production}
+    env_file:
+      - .env
+    ports:
+      - '${PORT:-3000}:3000'
+    volumes:
+      # Only logs in production
+      - ./logs:/app/logs
+    networks:
+      - whatsapp_api_network
+    profiles:
+      - prod
+
+networks:
+  whatsapp_api_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  node_modules:
+    driver: local
