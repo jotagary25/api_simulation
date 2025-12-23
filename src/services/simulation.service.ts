@@ -79,7 +79,7 @@ export class SimulationService {
   }
 
   /**
-   * Orchestrates the timing of status updates
+   * Orchestrates the timing of status updates with probabilistic outcomes
    */
   private triggerMessageLifecycle(phoneNumberId: string, wamid: string, recipientId: string): void {
     const targetUrl = config.simulation.clientWebhookUrl;
@@ -88,22 +88,55 @@ export class SimulationService {
       return;
     }
 
-    // Delays (in ms)
-    const sentDelay = 500; // 0.5s
-    const deliveredDelay = sentDelay + this.randomDelay(1000, 3000); // + 1-3s
-    const readDelay = deliveredDelay + this.randomDelay(2000, 5000); // + 2-5s
+    // Determine Scenario
+    // We can allow deterministic behavior based on Recipient Number patterns
+    // e.g. Ends with '00' -> Always Fail
+    // e.g. Ends with '01' -> Sent Only
+    // e.g. Ends with '02' -> Delivered Only
+    let scenario: 'FULL_READ' | 'DELIVERED_ONLY' | 'SENT_ONLY' | 'FAILED' = 'FULL_READ';
 
-    // Schedule 'sent'
+    if (recipientId.endsWith('00')) scenario = 'FAILED';
+    else if (recipientId.endsWith('01')) scenario = 'SENT_ONLY';
+    else if (recipientId.endsWith('02')) scenario = 'DELIVERED_ONLY';
+    else {
+      // Probabilistic Approach
+      const rand = Math.random();
+      if (rand < 0.05) scenario = 'FAILED'; // 5%
+      else if (rand < 0.1) scenario = 'SENT_ONLY'; // 5%
+      else if (rand < 0.3) scenario = 'DELIVERED_ONLY'; // 20%
+      else scenario = 'FULL_READ'; // 70%
+    }
+
+    logger.info(`Simulation: Triggering lifecycle scenario '${scenario}' for ${recipientId}`);
+
+    // Base delays
+    const sentDelay = 500;
+    const deliveredDelay = sentDelay + this.randomDelay(1000, 3000);
+    const readDelay = deliveredDelay + this.randomDelay(2000, 5000);
+
+    // 1. FAILED Scenario
+    if (scenario === 'FAILED') {
+      setTimeout(() => {
+        void this.sendStatusUpdate(phoneNumberId, wamid, recipientId, 'failed');
+      }, sentDelay + 500); // Fail slightly after "processing"
+      return;
+    }
+
+    // 2. SENT (Common to all non-failed)
     setTimeout(() => {
       void this.sendStatusUpdate(phoneNumberId, wamid, recipientId, 'sent');
     }, sentDelay);
 
-    // Schedule 'delivered'
+    if (scenario === 'SENT_ONLY') return;
+
+    // 3. DELIVERED
     setTimeout(() => {
       void this.sendStatusUpdate(phoneNumberId, wamid, recipientId, 'delivered');
     }, deliveredDelay);
 
-    // Schedule 'read'
+    if (scenario === 'DELIVERED_ONLY') return;
+
+    // 4. READ
     setTimeout(() => {
       void this.sendStatusUpdate(phoneNumberId, wamid, recipientId, 'read');
     }, readDelay);
@@ -116,7 +149,7 @@ export class SimulationService {
     phoneNumberId: string,
     wamid: string,
     recipientId: string,
-    status: 'sent' | 'delivered' | 'read'
+    status: 'sent' | 'delivered' | 'read' | 'failed'
   ): Promise<void> {
     const timestamp = Math.floor(Date.now() / 1000).toString();
 
@@ -133,7 +166,7 @@ export class SimulationService {
         },
       },
       pricing:
-        status !== 'read' // Pricing info is usually in sent/delivered
+        status === 'sent' || status === 'delivered'
           ? {
               billable: true,
               pricing_model: 'CBP',
@@ -141,6 +174,20 @@ export class SimulationService {
             }
           : undefined,
     };
+
+    // Add errors if status is failed
+    if (status === 'failed') {
+      statusObj.errors = [
+        {
+          code: 131051,
+          title: 'Message failed to send',
+          message: 'Message failed to send due to simulated failure',
+          error_data: {
+            details: 'Simulated failure scenario triggered',
+          },
+        },
+      ];
+    }
 
     const payload: WebhookStatusPayload = {
       object: 'whatsapp_business_account',
