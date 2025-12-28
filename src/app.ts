@@ -2,6 +2,7 @@ import config from './config';
 import database from './database';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware';
 import routes from './routes';
+import simulationRoutes from './routes/simulation.routes';
 import logger from './utils/logger';
 import compression from 'compression';
 import cors from 'cors';
@@ -93,6 +94,9 @@ class App {
         timestamp: new Date().toISOString(),
       });
     });
+
+    // WhatsApp Cloud API simulation route
+    this.app.use('/', simulationRoutes);
 
     // API routes
     this.app.use(`/api/${config.app.apiVersion}`, routes);

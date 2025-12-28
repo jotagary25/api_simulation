@@ -12,7 +12,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres_password_change_in_production}
       POSTGRES_INITDB_ARGS: '-A md5'
     ports:
-      - '${DB_PORT:-5432}:5432'
+      - '${DB_PORT_HOST:-4444}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./src/database/init:/docker-entrypoint-initdb.d
@@ -37,7 +37,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: development
-      PORT: ${PORT:-3000}
+      PORT: ${PORT:-4000}
       DB_HOST: postgres
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-whatsapp_api}
@@ -46,7 +46,7 @@ services:
     env_file:
       - .env
     ports:
-      - '${PORT:-3000}:3000'
+      - '${PORT:-4000}:4000'
     volumes:
       # Mount source code for live reload
       - ./src:/app/src:delegated
@@ -75,7 +75,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      PORT: ${PORT:-3000}
+      PORT: ${PORT:-4000}
       DB_HOST: postgres
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-whatsapp_api}
@@ -84,7 +84,7 @@ services:
     env_file:
       - .env
     ports:
-      - '${PORT:-3000}:3000'
+      - '${PORT:-4000}:4000'
     volumes:
       # Only logs in production
       - ./logs:/app/logs

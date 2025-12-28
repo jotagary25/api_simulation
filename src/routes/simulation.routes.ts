@@ -6,12 +6,12 @@ import { asyncHandler } from '../utils/asyncHandler';
 const router = Router();
 
 /**
- * @route   POST /api/v1/simulation/:phoneNumberId/messages
+ * @route   POST /v{VERSION}/:phoneNumberId/messages
  * @desc    Simulate WhatsApp Cloud API Message Endpoint
  * @access  Public (Simulation)
  */
 router.post(
-  '/:phoneNumberId/messages',
+  '/v:version/:phoneNumberId/messages',
   validate(schemas.whatsappTemplate),
   asyncHandler((req, res, next) => simulationController.sendTemplateMessage(req, res, next))
 );

@@ -33,7 +33,7 @@ COPY . .
 RUN mkdir -p logs
 
 # Expose port
-EXPOSE 3000
+EXPOSE 4000
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
@@ -87,11 +87,11 @@ RUN mkdir -p logs && chown -R nodejs:nodejs logs
 USER nodejs
 
 # Expose port
-EXPOSE 3000
+EXPOSE 4000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+  CMD node -e "const port = process.env.PORT || 4000; require('http').get('http://localhost:' + port + '/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]

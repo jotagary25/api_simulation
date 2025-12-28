@@ -51,10 +51,12 @@ Edita `.env` con tus configuraciones:
 ```bash
 # Aplicación
 NODE_ENV=development
-PORT=3000
+PORT=4000
 
 # Base de Datos
 DB_HOST=postgres
+DB_PORT=5432
+DB_PORT_HOST=4444
 DB_NAME=whatsapp_api
 DB_USER=postgres
 DB_PASSWORD=tu_password_seguro
@@ -72,7 +74,7 @@ WHATSAPP_WEBHOOK_SECRET=tu_webhook_secret
 docker compose --profile dev up --build
 ```
 
-La API estará disponible en `http://localhost:3000`
+La API estará disponible en `http://localhost:4000`
 
 ### Modo Producción
 
@@ -84,6 +86,36 @@ docker compose --profile prod up --build -d
 
 ```bash
 docker compose down
+```
+
+Nota: si levantaste con perfiles, usa el mismo perfil al bajar. Ejemplo: `docker compose --profile dev down` (si no, solo bajan servicios sin perfil, como `postgres`).
+
+### Actualizar variables de entorno sin bajar todo
+
+Los cambios en `.env` se leen al crear el contenedor. Para aplicar cambios solo en la API sin tocar Postgres:
+
+```bash
+docker compose --profile dev up -d --no-deps --force-recreate whatsapp_api
+```
+
+En produccion:
+
+```bash
+docker compose --profile prod up -d --no-deps --force-recreate whatsapp_api_prod
+```
+
+Nota: `docker compose restart` no recarga variables de entorno.
+
+### Instalar/actualizar dependencias sin rebuild completo
+
+```bash
+docker compose --profile dev exec whatsapp_api npm install
+```
+
+Si prefieres reproducibilidad estricta:
+
+```bash
+docker compose --profile dev exec whatsapp_api npm ci
 ```
 
 ### Ver logs
@@ -109,7 +141,12 @@ docker exec -it postgres_db psql -U postgres -d whatsapp_api
 docker compose down -v
 ```
 
-## 📡 Endpoints de la API
+## 📡 Endpoints
+
+Esta API expone dos superficies distintas:
+
+- **API interna de gestión**: `GET/POST /api/v1/...` (mensajes, webhooks, consultas)
+- **Simulador WhatsApp Cloud API**: `POST /v{VERSION}/{PHONE_NUMBER_ID}/messages`
 
 ### Bienvenida
 
@@ -130,7 +167,7 @@ Verifica que el servidor esté funcionando.
 **Ejemplo:**
 
 ```bash
-curl http://localhost:3000/health
+curl http://localhost:4000/health
 ```
 
 **Respuesta:**
@@ -146,7 +183,7 @@ curl http://localhost:3000/health
 
 ---
 
-### Mensajes
+### Mensajes (API interna)
 
 #### Crear un mensaje
 
@@ -171,7 +208,7 @@ POST /api/v1/messages
 **Ejemplo:**
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/messages \
+curl -X POST http://localhost:4000/api/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "from_number": "+1234567890",
@@ -189,7 +226,7 @@ GET /api/v1/messages?limit=10&offset=0
 **Ejemplo:**
 
 ```bash
-curl http://localhost:3000/api/v1/messages
+curl http://localhost:4000/api/v1/messages
 ```
 
 #### Obtener mensaje por ID
@@ -201,7 +238,7 @@ GET /api/v1/messages/:id
 **Ejemplo:**
 
 ```bash
-curl http://localhost:3000/api/v1/messages/uuid-del-mensaje
+curl http://localhost:4000/api/v1/messages/uuid-del-mensaje
 ```
 
 #### Actualizar mensaje
@@ -224,7 +261,7 @@ Estados válidos: `pending`, `sent`, `delivered`, `read`, `failed`
 **Ejemplo:**
 
 ```bash
-curl -X PATCH http://localhost:3000/api/v1/messages/uuid-del-mensaje \
+curl -X PATCH http://localhost:4000/api/v1/messages/uuid-del-mensaje \
   -H "Content-Type: application/json" \
   -d '{"status": "sent"}'
 ```
@@ -238,7 +275,7 @@ DELETE /api/v1/messages/:id
 **Ejemplo:**
 
 ```bash
-curl -X DELETE http://localhost:3000/api/v1/messages/uuid-del-mensaje
+curl -X DELETE http://localhost:4000/api/v1/messages/uuid-del-mensaje
 ```
 
 #### Obtener mensajes por número de teléfono
@@ -250,12 +287,12 @@ GET /api/v1/messages/phone/:phoneNumber?limit=50
 **Ejemplo:**
 
 ```bash
-curl http://localhost:3000/api/v1/messages/phone/+1234567890
+curl http://localhost:4000/api/v1/messages/phone/+1234567890
 ```
 
 ---
 
-### Webhooks
+### Webhooks (API interna)
 
 #### Recibir webhook de WhatsApp
 
@@ -279,7 +316,7 @@ POST /api/v1/webhooks
 **Ejemplo:**
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/webhooks \
+curl -X POST http://localhost:4000/api/v1/webhooks \
   -H "Content-Type: application/json" \
   -d '{
     "event_type": "message.received",
@@ -305,13 +342,27 @@ Esta API incluye un módulo de simulación de alta fidelidad que replica el comp
 
 ### Configuración del Simulador
 
-Para recibir los eventos de estado (`sent`, `delivered`, `read`), debes configurar en tu `.env`:
+Para recibir los eventos de estado (`sent`, `delivered`, `read`, `failed`), debes configurar en tu `.env`:
 
 ```bash
 # URL donde tu aplicación espera recibir los webhooks
-CLIENT_WEBHOOK_URL=http://localhost:3000/api/v1/webhooks
+CLIENT_WEBHOOK_URL=http://localhost:4000/api/v1/webhooks
 # Secreto para validar la firma X-Hub-Signature-256
 APP_SECRET=simulator_secret
+```
+
+### Endpoint simulado (equivalente al de WhatsApp Cloud API)
+
+El endpoint real de WhatsApp Cloud API es:
+
+```
+POST https://graph.facebook.com/v{VERSION}/{PHONE_NUMBER_ID}/messages
+```
+
+En este simulador se expone el **mismo path** (sin el dominio de Meta):
+
+```
+POST /v{VERSION}/:phoneNumberId/messages
 ```
 
 ### Ciclo de Vida Automático
@@ -323,12 +374,69 @@ Al enviar un mensaje al endpoint de simulación, el sistema automáticamente:
 3. Espera ~2s y envía un webhook `delivered`.
 4. Espera ~5s y envía un webhook `read`.
 
+### Formato del webhook de estados (Onion)
+
+El simulador envía un **POST** a `CLIENT_WEBHOOK_URL` con este formato "Onion" (Meta) y firma `X-Hub-Signature-256` (`sha256=HMAC(APP_SECRET, body)`).
+
+- `status` es un string con **uno** de estos valores: `sent`, `delivered`, `read`, `failed` (no se combinan).
+- `errors` solo aparece cuando `status` es `failed` y allí viene la descripcion del problema.
+- `pricing` solo aparece cuando `status` es `sent` o `delivered`.
+
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "100000000000000",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "1555000000",
+              "phone_number_id": "100020003000"
+            },
+            "statuses": [
+              {
+                "id": "wamid.HBgL7A4DF32C981B2...",
+                "status": "failed",
+                "timestamp": "1710000000",
+                "recipient_id": "59170000000",
+                "conversation": {
+                  "id": "CON_7A4DF32C98",
+                  "origin": { "type": "marketing" }
+                },
+                "errors": [
+                  {
+                    "code": 131051,
+                    "title": "Message failed to send",
+                    "message": "Message failed to send due to simulated failure",
+                    "error_data": {
+                      "details": "Simulated failure scenario triggered"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Referencias oficiales:
+- https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components
+- https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples
+
 ### Enviar Mensaje de Plantilla (Simulado)
 
-Replica el endpoint `POST /{PhoneNumberID}/messages` de Meta.
+Replica el endpoint `POST /v{VERSION}/{PhoneNumberID}/messages` de Meta.
 
 ```bash
-POST /api/v1/simulation/:phoneNumberId/messages
+POST /v{VERSION}/:phoneNumberId/messages
 ```
 
 **Body Completo (Soporte Header, Body, Buttons):**
@@ -411,7 +519,7 @@ POST /api/v1/simulation/:phoneNumberId/messages
 **Ejemplo cURL:**
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/simulation/100020003000/messages \
+curl -X POST http://localhost:4000/v21.0/100020003000/messages \
   -H "Content-Type: application/json" \
   -d '{
     "messaging_product": "whatsapp",
@@ -584,11 +692,11 @@ El proyecto incluye:
 
 ## 🐛 Troubleshooting
 
-### Port 3000 ya está en uso
+### Port 4000 ya está en uso
 
 ```bash
 # Cambiar puerto en .env
-PORT=3001
+PORT=4001
 ```
 
 ### Error de conexión a base de datos
@@ -629,9 +737,10 @@ Ver `.env.example` para todas las variables disponibles:
 | Variable                | Descripción                | Ejemplo                 |
 | ----------------------- | -------------------------- | ----------------------- |
 | NODE_ENV                | Entorno                    | development, production |
-| PORT                    | Puerto del servidor        | 3000                    |
+| PORT                    | Puerto del servidor        | 4000                    |
 | DB_HOST                 | Host de PostgreSQL         | postgres                |
-| DB_PORT                 | Puerto de PostgreSQL       | 5432                    |
+| DB_PORT                 | Puerto de PostgreSQL (contenedor) | 5432            |
+| DB_PORT_HOST            | Puerto de PostgreSQL (host) | 4444                   |
 | DB_NAME                 | Nombre de la base de datos | whatsapp_api            |
 | DB_USER                 | Usuario de PostgreSQL      | postgres                |
 | DB_PASSWORD             | Contraseña de PostgreSQL   | password                |

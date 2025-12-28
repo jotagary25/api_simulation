@@ -218,6 +218,11 @@ created_at: TIMESTAMP
 
 ## 🔄 Application Flow
 
+The project exposes two distinct entry surfaces:
+
+- Internal management API: `/api/v1/...` (CRUD for messages/webhooks)
+- WhatsApp Cloud API simulator: `POST /v{VERSION}/{PHONE_NUMBER_ID}/messages`
+
 ### Message Creation Flow
 
 ```
@@ -258,18 +263,81 @@ created_at: TIMESTAMP
 
 ### Simulated Lifecycle (Message Status Updates)
 
-The SimulationService (`/api/v1/simulation`) orchestrates a realistic event timeline after a message is sent:
+The SimulationService (`POST /v{VERSION}/{PHONE_NUMBER_ID}/messages`) orchestrates a realistic event timeline after a message is sent:
 
 1. **T+0ms**: API returns `200 OK` with `wamid`.
 2. **T+500ms**: Simulator sends `status: sent` webhook.
 3. **T+2500ms**: Simulator sends `status: delivered` webhook.
 4. **T+5000ms**: Simulator sends `status: read` webhook.
 
+The simulator mirrors Meta's Cloud API endpoint:
+
+- Official: `POST https://graph.facebook.com/v{VERSION}/{PHONE_NUMBER_ID}/messages`
+- Simulation: `POST /v{VERSION}/:phoneNumberId/messages`
+
 Each webhook payload is:
 
 - Structured exactly like Meta's "Onion" JSON.
 - Signed with `HMAC-SHA256` using `APP_SECRET`.
 - Sent to `CLIENT_WEBHOOK_URL` configured in env.
+
+Webhook status payload details:
+
+- The simulator sends an HTTP **POST** with `X-Hub-Signature-256: sha256=HMAC(APP_SECRET, body)`.
+- `status` is a single value: `sent`, `delivered`, `read`, or `failed` (not combined).
+- `errors` only appears when `status` is `failed` and carries the failure description.
+- `pricing` only appears for `sent` or `delivered`.
+
+Example (failed status):
+
+```json
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "100000000000000",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "1555000000",
+              "phone_number_id": "100020003000"
+            },
+            "statuses": [
+              {
+                "id": "wamid.HBgL7A4DF32C981B2...",
+                "status": "failed",
+                "timestamp": "1710000000",
+                "recipient_id": "59170000000",
+                "conversation": {
+                  "id": "CON_7A4DF32C98",
+                  "origin": { "type": "marketing" }
+                },
+                "errors": [
+                  {
+                    "code": 131051,
+                    "title": "Message failed to send",
+                    "message": "Message failed to send due to simulated failure",
+                    "error_data": {
+                      "details": "Simulated failure scenario triggered"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+References:
+- https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components
+- https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples
 
 ---
 
@@ -359,11 +427,12 @@ All route handlers are wrapped with `asyncHandler` to ensure Promise rejections 
 ```bash
 # Application
 NODE_ENV=development|production    # Determines behavior
-PORT=3000                          # Server port
+PORT=4000                          # Server port
 
 # Database (must match docker-compose)
 DB_HOST=postgres                   # Container name
-DB_PORT=5432
+DB_PORT=5432                       # Container port
+DB_PORT_HOST=4444                  # Host port mapping
 DB_NAME=whatsapp_api
 DB_USER=postgres
 DB_PASSWORD=[secure password]
@@ -461,8 +530,17 @@ cp .env.example .env
 # 3. Start with Docker
 docker-compose --profile dev up --build
 
-# API available at http://localhost:3000
+# API available at http://localhost:4000
 ```
+
+Note: use the same profile to stop containers (e.g. `docker-compose --profile dev down`), otherwise only non-profile services stop (like `postgres`).
+
+Quick operational tips:
+
+- Apply `.env` changes without touching Postgres:
+  `docker-compose --profile dev up -d --no-deps --force-recreate whatsapp_api`
+- Install/update dependencies in the running dev container:
+  `docker-compose --profile dev exec whatsapp_api npm install` (or `npm ci`)
 
 ### Production Deployment
 
@@ -477,7 +555,7 @@ docker-compose --profile prod up -d
 docker-compose logs -f app_prod
 
 # 4. Monitor health
-curl http://localhost:3000/health
+curl http://localhost:4000/health
 ```
 
 ### Scaling Considerations
@@ -806,8 +884,8 @@ docker-compose logs -f
 
 ### API Base URL
 
-- Development: `http://localhost:3000/api/v1`
-- Health Check: `http://localhost:3000/health`
+- Development: `http://localhost:4000/api/v1`
+- Health Check: `http://localhost:4000/health`
 
 ---
 

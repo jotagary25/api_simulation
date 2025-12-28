@@ -48,7 +48,7 @@ interface Config {
 const config: Config = {
   app: {
     env: process.env['NODE_ENV'] || 'development',
-    port: parseInt(process.env['PORT'] || '3000', 10),
+    port: parseInt(process.env['PORT'] || '4000', 10),
     apiVersion: process.env['API_VERSION'] || 'v1',
   },
   database: {
@@ -82,7 +82,7 @@ const config: Config = {
     webhookSecret: process.env['WHATSAPP_WEBHOOK_SECRET'] || '',
   },
   simulation: {
-    clientWebhookUrl: process.env['CLIENT_WEBHOOK_URL'] || 'http://localhost:3000/api/v1/webhooks',
+    clientWebhookUrl: process.env['CLIENT_WEBHOOK_URL'] || 'http://localhost:4000/api/v1/webhooks',
     appSecret: process.env['APP_SECRET'] || 'simulator_secret',
   },
 };
