@@ -30,6 +30,7 @@ interface Config {
   logging: {
     level: string;
     filePath: string;
+    console: boolean;
   };
   cors: {
     origin: string;
@@ -45,45 +46,73 @@ interface Config {
   };
 }
 
+/**
+ * Retrieves environment variable or throws an error if missing.
+ * Ensures NO default values are used in code.
+ */
+const getEnvOrThrow = (key: string): string => {
+  const value = process.env[key];
+  if (value === undefined || value === '') {
+    throw new Error(`Environment variable ${key} is required but was not set.`);
+  }
+  return value;
+};
+
+// Functions to parse types safely
+const getInt = (key: string): number => {
+  const val = getEnvOrThrow(key);
+  const parsed = parseInt(val, 10);
+  if (isNaN(parsed)) {
+    throw new Error(`Environment variable ${key} must be a number.`);
+  }
+  return parsed;
+};
+
+const getBool = (key: string): boolean => {
+  const val = getEnvOrThrow(key).toLowerCase();
+  return val === 'true';
+};
+
 const config: Config = {
   app: {
-    env: process.env['NODE_ENV'] || 'development',
-    port: parseInt(process.env['PORT'] || '4000', 10),
-    apiVersion: process.env['API_VERSION'] || 'v1',
+    env: getEnvOrThrow('NODE_ENV'),
+    port: getInt('PORT'),
+    apiVersion: getEnvOrThrow('API_VERSION'),
   },
   database: {
-    host: process.env['DB_HOST'] || 'localhost',
-    port: parseInt(process.env['DB_PORT'] || '5432', 10),
-    name: process.env['DB_NAME'] || 'whatsapp_api',
-    user: process.env['DB_USER'] || 'postgres',
-    password: process.env['DB_PASSWORD'] || 'postgres',
-    poolMin: parseInt(process.env['DB_POOL_MIN'] || '2', 10),
-    poolMax: parseInt(process.env['DB_POOL_MAX'] || '10', 10),
+    host: getEnvOrThrow('DB_HOST'),
+    port: getInt('DB_PORT'),
+    name: getEnvOrThrow('DB_NAME'),
+    user: getEnvOrThrow('DB_USER'),
+    password: getEnvOrThrow('DB_PASSWORD'),
+    poolMin: getInt('DB_POOL_MIN'),
+    poolMax: getInt('DB_POOL_MAX'),
   },
   security: {
-    jwtSecret: process.env['JWT_SECRET'] || 'changeme',
-    jwtExpiresIn: process.env['JWT_EXPIRES_IN'] || '24h',
-    bcryptRounds: parseInt(process.env['BCRYPT_ROUNDS'] || '10', 10),
+    jwtSecret: getEnvOrThrow('JWT_SECRET'),
+    jwtExpiresIn: getEnvOrThrow('JWT_EXPIRES_IN'),
+    bcryptRounds: getInt('BCRYPT_ROUNDS'),
   },
   rateLimit: {
-    windowMs: parseInt(process.env['RATE_LIMIT_WINDOW_MS'] || '900000', 10),
-    maxRequests: parseInt(process.env['RATE_LIMIT_MAX_REQUESTS'] || '100', 10),
+    windowMs: getInt('RATE_LIMIT_WINDOW_MS'),
+    maxRequests: getInt('RATE_LIMIT_MAX_REQUESTS'),
   },
   logging: {
-    level: process.env['LOG_LEVEL'] || 'info',
-    filePath: process.env['LOG_FILE_PATH'] || './logs',
+    level: getEnvOrThrow('LOG_LEVEL'),
+    filePath: getEnvOrThrow('LOG_FILE_PATH'),
+    console: process.env['NODE_ENV'] !== 'test',
   },
   cors: {
-    origin: process.env['CORS_ORIGIN'] || '*',
-    credentials: process.env['CORS_CREDENTIALS'] === 'true',
+    origin: getEnvOrThrow('CORS_ORIGIN'),
+    credentials: getBool('CORS_CREDENTIALS'),
   },
   whatsapp: {
-    apiKey: process.env['WHATSAPP_API_KEY'] || '',
-    webhookSecret: process.env['WHATSAPP_WEBHOOK_SECRET'] || '',
+    apiKey: getEnvOrThrow('WHATSAPP_API_KEY'),
+    webhookSecret: getEnvOrThrow('WHATSAPP_WEBHOOK_SECRET'),
   },
   simulation: {
-    clientWebhookUrl: process.env['CLIENT_WEBHOOK_URL'] || 'http://localhost:4000/api/v1/webhooks',
-    appSecret: process.env['APP_SECRET'] || 'simulator_secret',
+    clientWebhookUrl: getEnvOrThrow('CLIENT_WEBHOOK_URL'),
+    appSecret: getEnvOrThrow('APP_SECRET'),
   },
 };
 

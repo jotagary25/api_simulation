@@ -71,61 +71,51 @@ WHATSAPP_WEBHOOK_SECRET=tu_webhook_secret
 ### Modo Desarrollo (con hot reload)
 
 ```bash
-docker compose --profile dev up --build
+# Usar el archivo específico de desarrollo
+docker compose -f docker-compose.dev.yml up --build
 ```
 
-La API estará disponible en `http://localhost:4000`
+La API estará disponible en `http://localhost:3000` (o el puerto que definas en PORT).
 
 ### Modo Producción
 
 ```bash
-docker compose --profile prod up --build -d
+# Usar el archivo main (producción)
+docker compose -f docker-compose.main.yml up --build -d
 ```
 
 ### Detener contenedores
 
 ```bash
-docker compose down
-```
+# Desarrollo
+docker compose -f docker-compose.dev.yml down
 
-Nota: si levantaste con perfiles, usa el mismo perfil al bajar. Ejemplo: `docker compose --profile dev down` (si no, solo bajan servicios sin perfil, como `postgres`).
+# Producción
+docker compose -f docker-compose.main.yml down
+```
 
 ### Actualizar variables de entorno sin bajar todo
 
 Los cambios en `.env` se leen al crear el contenedor. Para aplicar cambios solo en la API sin tocar Postgres:
 
 ```bash
-docker compose --profile dev up -d --no-deps --force-recreate whatsapp_api
+docker compose -f docker-compose.dev.yml up -d --no-deps --force-recreate whatsapp_api
 ```
-
-En produccion:
-
-```bash
-docker compose --profile prod up -d --no-deps --force-recreate whatsapp_api_prod
-```
-
-Nota: `docker compose restart` no recarga variables de entorno.
 
 ### Instalar/actualizar dependencias sin rebuild completo
 
 ```bash
-docker compose --profile dev exec whatsapp_api npm install
-```
-
-Si prefieres reproducibilidad estricta:
-
-```bash
-docker compose --profile dev exec whatsapp_api npm ci
+docker compose -f docker-compose.dev.yml exec whatsapp_api npm install
 ```
 
 ### Ver logs
 
 ```bash
 # Logs de la aplicación
-docker compose logs -f whatsapp_api
+docker compose -f docker-compose.dev.yml logs -f whatsapp_api
 
 # Logs de la base de datos
-docker compose logs -f postgres
+docker compose -f docker-compose.dev.yml logs -f postgres
 ```
 
 ### Otros comandos útiles
@@ -428,6 +418,7 @@ El simulador envía un **POST** a `CLIENT_WEBHOOK_URL` con este formato "Onion" 
 ```
 
 Referencias oficiales:
+
 - https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components
 - https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples
 
@@ -692,33 +683,38 @@ El proyecto incluye:
 
 ## 🐛 Troubleshooting
 
-### Port 4000 ya está en uso
+### Port ya está en uso
 
 ```bash
 # Cambiar puerto en .env
 PORT=4001
+# Actualizar puerto interno si es necesario (generalmente no, docker se encarga)
 ```
 
 ### Error de conexión a base de datos
 
+Asegúrate de que `DB_HOST` sea `postgres` en tu `.env` cuando corres con Docker.
+
 ```bash
-# Verificar que DB_HOST sea 'postgres' (nombre del contenedor)
-# Reiniciar contenedores
-docker compose restart postgres
+# Verificar que contenedores corren
+docker compose -f docker-compose.dev.yml ps
+
+# Reiniciar base de datos
+docker compose -f docker-compose.dev.yml restart postgres
 ```
 
 ### Hot reload no funciona
 
 ```bash
 # Reiniciar contenedor de desarrollo
-docker compose restart whatsapp_api
+docker compose -f docker-compose.dev.yml restart whatsapp_api
 ```
 
 ### Limpiar todo y empezar de nuevo
 
 ```bash
-docker compose down -v
-docker compose --profile dev up --build
+docker compose -f docker-compose.dev.yml down -v
+docker compose -f docker-compose.dev.yml up --build
 ```
 
 ## 📚 Documentación Adicional
@@ -732,21 +728,34 @@ docker compose --profile dev up --build
 
 ## 📝 Variables de Entorno
 
-Ver `.env.example` para todas las variables disponibles:
+**IMPORTANTE**: No existen valores por defecto en el código. TODAS las variables deben estar definidas en `.env`.
 
-| Variable                | Descripción                | Ejemplo                 |
-| ----------------------- | -------------------------- | ----------------------- |
-| NODE_ENV                | Entorno                    | development, production |
-| PORT                    | Puerto del servidor        | 4000                    |
-| DB_HOST                 | Host de PostgreSQL         | postgres                |
-| DB_PORT                 | Puerto de PostgreSQL (contenedor) | 5432            |
-| DB_PORT_HOST            | Puerto de PostgreSQL (host) | 4444                   |
-| DB_NAME                 | Nombre de la base de datos | whatsapp_api            |
-| DB_USER                 | Usuario de PostgreSQL      | postgres                |
-| DB_PASSWORD             | Contraseña de PostgreSQL   | password                |
-| WHATSAPP_API_KEY        | API key de WhatsApp        | tu_key                  |
-| WHATSAPP_WEBHOOK_SECRET | Secret de webhook          | tu_secret               |
-| LOG_LEVEL               | Nivel de logging           | info, debug, error      |
+| Variable                  | Descripción                                                  | Requerido |
+| ------------------------- | ------------------------------------------------------------ | --------- |
+| `NODE_ENV`                | Entorno (`development`, `production`)                        | Sí        |
+| `PORT`                    | Puerto interno de la aplicación                              | Sí        |
+| `API_VERSION`             | Versión de la API (ej: `v1`)                                 | Sí        |
+| `DB_HOST`                 | Host de PostgreSQL (`postgres` en docker, `localhost` local) | Sí        |
+| `DB_PORT`                 | Puerto interno de PostgreSQL (usualmente 5432)               | Sí        |
+| `DB_PORT_HOST`            | Puerto expuesto en host (solo dev)                           | Sí        |
+| `DB_NAME`                 | Nombre de la base de datos                                   | Sí        |
+| `DB_USER`                 | Usuario de PostgreSQL                                        | Sí        |
+| `DB_PASSWORD`             | Contraseña de PostgreSQL                                     | Sí        |
+| `DB_POOL_MIN`             | Mínimo de conexiones en pool                                 | Sí        |
+| `DB_POOL_MAX`             | Máximo de conexiones en pool                                 | Sí        |
+| `JWT_SECRET`              | Secreto para firmar tokens                                   | Sí        |
+| `JWT_EXPIRES_IN`          | Tiempo de expiración JWT                                     | Sí        |
+| `BCRYPT_ROUNDS`           | Costo de hasheo de passwords                                 | Sí        |
+| `RATE_LIMIT_WINDOW_MS`    | Ventana de tiempo rate limit                                 | Sí        |
+| `RATE_LIMIT_MAX_REQUESTS` | Máximo requests por ventana                                  | Sí        |
+| `LOG_LEVEL`               | Nivel de logs (`debug`, `info`, `error`)                     | Sí        |
+| `LOG_FILE_PATH`           | Directorio de logs                                           | Sí        |
+| `CORS_ORIGIN`             | Orígenes permitidos (CORS)                                   | Sí        |
+| `CORS_CREDENTIALS`        | Permitir credenciales CORS                                   | Sí        |
+| `WHATSAPP_API_KEY`        | Token API WhatsApp                                           | Sí        |
+| `WHATSAPP_WEBHOOK_SECRET` | Secreto webhook WhatsApp                                     | Sí        |
+| `CLIENT_WEBHOOK_URL`      | URL destino para simulación                                  | Sí        |
+| `APP_SECRET`              | Secreto para firma HMAC simulada                             | Sí        |
 
 ## 🚀 Próximos Pasos
 

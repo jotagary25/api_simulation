@@ -1,0 +1,67 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database (Production)
+  postgres:
+    image: postgres:16-alpine
+    container_name: whatsapp_api_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: '-A md5'
+      PGPORT: ${DB_PORT}
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./src/database/init:/docker-entrypoint-initdb.d
+    networks:
+      - whatsapp_api_network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER} -d ${DB_NAME} -p ${DB_PORT}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Application - Production
+  whatsapp_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: whatsapp_api
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${PORT}
+
+      # Database
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      # Secrets & Configs
+      CLIENT_WEBHOOK_URL: ${CLIENT_WEBHOOK_URL}
+      APP_SECRET: ${APP_SECRET}
+    ports:
+      - '${PORT}:${PORT}'
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - whatsapp_api_network
+    command: npm start
+
+networks:
+  whatsapp_api_network:
+    driver: bridge
+
+volumes:
+  postgres_data_prod:
+    driver: local

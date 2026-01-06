@@ -336,6 +336,7 @@ Example (failed status):
 ```
 
 References:
+
 - https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/components
 - https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples
 
@@ -350,18 +351,34 @@ References:
 3. **Builder Stage**: Compiles TypeScript to JavaScript
 4. **Production Stage**: Minimal image with compiled code only
 
-### Docker Compose Profiles
+### Docker Strategy: Separate Environments
 
-- **dev**: Development environment with hot reload
+We use separate Docker Compose files to maintain clear isolation between Development and Production configurations, avoiding complexity with profiles.
 
-  - Source code mounted as volume
-  - `npm run dev` with nodemon
-  - Full error stack traces
+#### 1. Development (`docker-compose.dev.yml`)
 
-- **prod**: Production environment
-  - Compiled code only
-  - Optimized Node.js settings
-  - Minimal logging
+- **Focus**: Developer Experience (DX) & Debugging.
+- **Features**:
+  - `npm run dev` with `nodemon` (Hot Reload).
+  - Source code mounted (`./src:/app/src`).
+  - DB Port exposed explicitly (e.g., `4444:5432`) for local inspection.
+  - `host.docker.internal` networking for Simulators.
+
+#### 2. Production (`docker-compose.main.yml`)
+
+- **Focus**: Stability, Security & Performance.
+- **Features**:
+  - `npm start` running compiled JS.
+  - **No source code mounted** (Immutable infrastructure).
+  - `restart: always` policy.
+  - Database isolated (no public ports exposed).
+
+### Multi-Stage Dockerfile
+
+1. **Base Stage**: Common setup for all stages
+2. **Development Stage**: Includes dev dependencies, source code mounted
+3. **Builder Stage**: Compiles TypeScript to JavaScript
+4. **Production Stage**: Minimal image with compiled code only
 
 ### Container Communication
 
@@ -527,35 +544,30 @@ nvm use
 # 2. Create .env file
 cp .env.example .env
 
-# 3. Start with Docker
-docker-compose --profile dev up --build
+# 3. Start with Development Compose File
+docker-compose -f docker-compose.dev.yml up --build
 
-# API available at http://localhost:4000
+# API available at http://localhost:3000
 ```
-
-Note: use the same profile to stop containers (e.g. `docker-compose --profile dev down`), otherwise only non-profile services stop (like `postgres`).
 
 Quick operational tips:
 
 - Apply `.env` changes without touching Postgres:
-  `docker-compose --profile dev up -d --no-deps --force-recreate whatsapp_api`
+  `docker-compose -f docker-compose.dev.yml up -d --no-deps --force-recreate whatsapp_api`
 - Install/update dependencies in the running dev container:
-  `docker-compose --profile dev exec whatsapp_api npm install` (or `npm ci`)
+  `docker-compose -f docker-compose.dev.yml exec whatsapp_api npm install`
 
 ### Production Deployment
 
 ```bash
-# 1. Build production image
-docker-compose build --profile prod
+# 1. Start production containers using Main file
+docker-compose -f docker-compose.main.yml up -d --build
 
-# 2. Start production containers
-docker-compose --profile prod up -d
+# 2. Check logs
+docker-compose -f docker-compose.main.yml logs -f whatsapp_api
 
-# 3. Check logs
-docker-compose logs -f app_prod
-
-# 4. Monitor health
-curl http://localhost:4000/health
+# 3. Monitor health
+curl http://localhost:3000/health
 ```
 
 ### Scaling Considerations
@@ -861,7 +873,7 @@ docker-compose restart whatsapp_api
 ### Start Development
 
 ```bash
-docker-compose --profile dev up
+docker-compose -f docker-compose.dev.yml up
 ```
 
 ### Run Tests
@@ -873,19 +885,19 @@ npm test
 ### Build Production
 
 ```bash
-docker-compose --profile prod up --build
+docker-compose -f docker-compose.main.yml up --build -d
 ```
 
 ### View Logs
 
 ```bash
-docker-compose logs -f
+docker-compose -f docker-compose.dev.yml logs -f
 ```
 
 ### API Base URL
 
-- Development: `http://localhost:4000/api/v1`
-- Health Check: `http://localhost:4000/health`
+- Development: `http://localhost:3000/api/v1` (or your configured PORT)
+- Health Check: `http://localhost:3000/health`
 
 ---
 
